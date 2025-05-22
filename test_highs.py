@@ -50,7 +50,8 @@ for row_idx, (nutrient, lb_val, ub_val) in enumerate(constraints):
 
     lower_bounds.append(lb_val)
     upper_bounds.append(ub_val)
-
+    
+sparse_safe.sum_duplicates()
 sparse = sparse_safe.tocsc()
 starts = sparse.indptr.astype(np.int32)
 index = sparse.indices.astype(np.int32)
