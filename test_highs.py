@@ -2,9 +2,9 @@ from highspy import Highs
 import numpy as np
 from scipy.sparse import lil_matrix
 
-# -------------------------------
-# Feed ingredient definitions
-# -------------------------------
+# --------------------------------------
+# Ingredient definitions
+# --------------------------------------
 ingredients = {
     "corn":     {"cost": 0.104, "cp": 0.085, "me": 3350, "fat": 0.038, "ca": 0.0002, "p": 0.0025, "lys": 0.0026, "met": 0.0018},
     "soybean":  {"cost": 0.118, "cp": 0.475, "me": 2750, "fat": 0.015, "ca": 0.0030, "p": 0.0065, "lys": 0.0290, "met": 0.0065},
@@ -15,9 +15,9 @@ ingredients = {
 order = list(ingredients.keys())
 n_vars = len(order)
 
-# -------------------------------
-# Starter phase constraints
-# -------------------------------
+# --------------------------------------
+# Nutrient constraints for Starter phase
+# --------------------------------------
 constraints = [
     ("cp",   0.22, 0.24),
     ("fat",  0.045, 0.06),
@@ -25,79 +25,76 @@ constraints = [
     ("p",    0.0045, 0.0055),
     ("lys",  0.011, 0.013),
     ("met",  0.005, 0.0065),
-    ("me",   2900, 3100),  # kcal/kg, will scale to kcal/g
+    ("me",   2900, 3100),
     ("total", 1.0, 1.0)
 ]
 
-rows = []
 lower_bounds = []
 upper_bounds = []
 
-# -------------------------------
-# Build constraint matrix (dense)
-# -------------------------------
-for key, lb, ub in constraints:
-    if key == "total":
-        row = [1.0] * n_vars
-    elif key == "me":
-        row = [ingredients[i]["me"] / 1000.0 for i in order]
-        lb /= 1000.0
-        ub /= 1000.0
-    else:
-        row = [ingredients[i][key] for i in order]
-
-    rows.append(row)
-    lower_bounds.append(lb)
-    upper_bounds.append(ub)
-
-A_dense = np.array(rows, dtype=np.float64)
-costs = np.array([ingredients[i]["cost"] for i in order], dtype=np.float64)
-
-# -------------------------------
-# Bounds per ingredient
-# -------------------------------
-lb = np.zeros(n_vars, dtype=np.float64)
-ub = np.ones(n_vars, dtype=np.float64)
-
-ub[order.index("bsf")] = 0.04
-lb[order.index("premix")] = ub[order.index("premix")] = 0.005
-lb[order.index("limestone")] = ub[order.index("limestone")] = 0.047
-
-# -------------------------------
-# Convert dense A to valid CSC
-# -------------------------------
-# Build sparse matrix safely
+# --------------------------------------
+# Sparse matrix assembly (safe method)
+# --------------------------------------
+print("\n🔍 Building sparse matrix with lil_matrix...")
 sparse_safe = lil_matrix((len(constraints), n_vars), dtype=np.float64)
-for row_idx, (key, lb_val, ub_val) in enumerate(constraints):
-    if key == "total":
-        sparse_safe[row_idx, :] = 1.0
-    elif key == "me":
-        sparse_safe[row_idx, :] = [ingredients[i]["me"] / 1000.0 for i in order]
-    else:
-        sparse_safe[row_idx, :] = [ingredients[i][key] for i in order]
 
+for row_idx, (nutrient, lb_val, ub_val) in enumerate(constraints):
+    if nutrient == "total":
+        sparse_safe[row_idx, :] = 1.0
+    elif nutrient == "me":
+        sparse_safe[row_idx, :] = [ingredients[i]["me"] / 1000.0 for i in order]
+        lb_val /= 1000.0
+        ub_val /= 1000.0
+    else:
+        sparse_safe[row_idx, :] = [ingredients[i][nutrient] for i in order]
+
+    lower_bounds.append(lb_val)
+    upper_bounds.append(ub_val)
+
+# Convert to CSC
 sparse = sparse_safe.tocsc()
 starts = sparse.indptr.astype(np.int32)
 index = sparse.indices.astype(np.int32)
 values = sparse.data.astype(np.float64)
-# -------------------------------
-# Debugging output
-# -------------------------------
-print("Sparse matrix shape:", sparse.shape)
-print("Nonzeros:", len(values))
-print("starts:", starts)
-print("index:", index)
-print("costs:", costs)
-print("lb:", lb)
-print("ub:", ub)
-print("Row bounds:", list(zip(lower_bounds, upper_bounds)))
-assert starts[-1] == len(values), "Mismatch: last index of starts != number of values"
 
-# -------------------------------
-# Build and solve LP
-# -------------------------------
+# --------------------------------------
+# Variable bounds & cost vector
+# --------------------------------------
+lb_array = np.zeros(n_vars, dtype=np.float64)
+ub_array = np.ones(n_vars, dtype=np.float64)
+
+# Apply fixed and max constraints
+ub_array[order.index("bsf")] = 0.04
+premix_idx = order.index("premix")
+limestone_idx = order.index("limestone")
+lb_array[premix_idx] = ub_array[premix_idx] = 0.005
+lb_array[limestone_idx] = ub_array[limestone_idx] = 0.047
+
+cost_vector = np.array([ingredients[i]["cost"] for i in order], dtype=np.float64)
+
+# --------------------------------------
+# Deep debugging before solve
+# --------------------------------------
+print("\n📊 Sparse Matrix Summary")
+print("-" * 40)
+print("Shape:", sparse.shape)
+print("Nonzeros:", len(values))
+print("Starts (column ptrs):", starts.tolist())
+print("Index (row indices):", index.tolist())
+print("Values:", values.tolist())
+print("\n🧮 Cost vector:", cost_vector.tolist())
+print("📌 Lower bounds:", lb_array.tolist())
+print("📌 Upper bounds:", ub_array.tolist())
+print("📐 Constraint bounds:", list(zip(lower_bounds, upper_bounds)))
+
+assert starts[-1] == len(values), "ERROR: CSC index mismatch!"
+assert sparse.shape == (len(constraints), n_vars), "ERROR: Matrix shape mismatch!"
+
+# --------------------------------------
+# Build and solve LP model
+# --------------------------------------
 model = Highs()
-model.addCols(n_vars, costs, lb, ub, len(values), starts, index, values)
+model.addCols(n_vars, cost_vector, lb_array, ub_array, len(values), starts, index, values)
 model.addRows(len(lower_bounds),
               np.array(lower_bounds, dtype=np.float64),
               np.array(upper_bounds, dtype=np.float64),
@@ -105,15 +102,22 @@ model.addRows(len(lower_bounds),
               np.array([], dtype=np.int32),
               np.array([], dtype=np.int32),
               np.array([], dtype=np.float64))
-model.run()
 
+print("\n🚀 Solving LP...")
+model.run()
+status = model.getModelStatus()
+print("✅ Model status:", status)
+
+# --------------------------------------
+# Output results
+# --------------------------------------
 sol = model.getSolution()
 x = sol.col_value
 
-# -------------------------------
-# Print results
-# -------------------------------
-print("\nFeed Mix:")
-for i, val in enumerate(x):
-    print(f"  {order[i]}: {val:.4f}")
-print(f"\nCost per kg: {np.dot(costs, x):.4f}")
+if len(x) == 0:
+    print("❌ No solution found. LP was likely infeasible.")
+else:
+    print("\n🥣 Feed Mix Solution:")
+    for i, val in enumerate(x):
+        print(f"  {order[i]}: {val:.4f}")
+    print(f"\n💰 Cost per kg: {np.dot(cost_vector, x):.4f}")
