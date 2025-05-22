@@ -2,7 +2,7 @@ import numpy as np
 from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
-from utils import analyze_infeasible
+from utils import analyze_infeasible, analyze_infeasible_detailed
 
 def solve_model(model: LPModel) -> dict:
     var_order = list(model.variables.keys())
@@ -52,7 +52,8 @@ def solve_model(model: LPModel) -> dict:
             "contributions": contributions
         }
 
-        debug["hint"] = analyze_infeasible(debug)
+        debug["hint_summary"] = analyze_infeasible(debug)
+        debug["hint_ranked"] = analyze_infeasible_detailed(debug)
 
         return {
             "vars": {},
@@ -60,6 +61,7 @@ def solve_model(model: LPModel) -> dict:
             "infeasible": True,
             "debug": debug
         }
+
 
     sol = solver.getSolution()
     x = sol.col_value

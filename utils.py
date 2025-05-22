@@ -71,3 +71,55 @@ def analyze_infeasible(debug: dict) -> str:
             hint = f"{culprit} can’t hit equality; adjust bounds on '{var}'."
 
     return hint or "No obvious single-constraint bottleneck detected."
+def analyze_infeasible_detailed(debug: dict, top_k: int = 3) -> list:
+    constraints = debug["constraints"]
+    bounds = debug["variable_bounds"]
+    coeffs = debug["contributions"]
+
+    suggestions = []
+
+    for cname, spec in constraints.items():
+        # Max achievable value for this constraint
+        max_val = sum(bounds[v]["max"] * coeffs[cname].get(v, 0) for v in bounds)
+        min_val = sum(bounds[v]["min"] * coeffs[cname].get(v, 0) for v in bounds)
+
+        req_min = spec.get("min", -float("inf"))
+        req_max = spec.get("max", float("inf"))
+        equal = spec.get("equal")
+
+        gap = None
+        direction = None
+        # Constraint too low
+        if equal is not None:
+            if not (min_val <= equal <= max_val):
+                gap = equal - max_val if equal > max_val else min_val - equal
+                direction = "equal"
+        elif max_val < req_min:
+            gap = req_min - max_val
+            direction = "low"
+        elif min_val > req_max:
+            gap = min_val - req_max
+            direction = "high"
+
+        if gap is not None:
+            # Find best variable to adjust
+            best_var = max(
+                coeffs[cname].items(),
+                key=lambda kv: kv[1] if kv[1] > 0 else -float("inf"),
+                default=(None, 0)
+            )[0]
+
+            if best_var:
+                if direction == "low":
+                    fix = f"raise {best_var}.max"
+                elif direction == "high":
+                    fix = f"lower {best_var}.min"
+                elif direction == "equal":
+                    fix = f"adjust {best_var}.bounds to allow {equal}"
+                suggestions.append({
+                    "constraint": cname,
+                    "gap": round(gap, 6),
+                    "fix": fix
+                })
+
+    return sorted(suggestions, key=lambda x: abs(x["gap"]), reverse=True)[:top_k]
