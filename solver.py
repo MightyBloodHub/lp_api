@@ -6,6 +6,67 @@ from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
 
+
+def _suggest_relaxations(model: LPModel):
+    """Return minimal constraint relaxations using slack variables."""
+    var_order = list(model.variables.keys())
+    n_vars = len(var_order)
+
+    cost_vector = np.zeros(n_vars, dtype=np.float64)
+    lb = np.array([model.variables[v].get("min", 0.0) for v in var_order], dtype=np.float64)
+    ub = np.array([model.variables[v].get("max", 1.0) for v in var_order], dtype=np.float64)
+
+    A, rhs_lo, rhs_hi, constraint_names = build_sparse_matrix(model.constraints, model.variables, var_order)
+    starts = A.indptr.astype(np.int32)
+    index = A.indices.astype(np.int32)
+    values = A.data.astype(np.float64)
+
+    solver = Highs()
+    solver.addRows(len(rhs_lo), np.array(rhs_lo), np.array(rhs_hi),
+                   0, np.array([], dtype=np.int32),
+                   np.array([], dtype=np.int32),
+                   np.array([], dtype=np.float64))
+    solver.addCols(n_vars, cost_vector, lb, ub, len(values), starts, index, values)
+
+    slack_info = {}
+    slack_idx = n_vars
+    for row_idx, cname in enumerate(constraint_names):
+        con = model.constraints[cname]
+        if con.min is not None:
+            solver.addCol(1.0, 0.0, np.inf, 1,
+                          np.array([row_idx], dtype=np.int32),
+                          np.array([1.0], dtype=np.float64))
+            slack_info[f"{cname}.min"] = slack_idx
+            slack_idx += 1
+        if con.max is not None:
+            solver.addCol(1.0, 0.0, np.inf, 1,
+                          np.array([row_idx], dtype=np.int32),
+                          np.array([-1.0], dtype=np.float64))
+            slack_info[f"{cname}.max"] = slack_idx
+            slack_idx += 1
+
+    solver.run()
+    status = solver.getModelStatus()
+    if str(status) != "HighsModelStatus.kOptimal":
+        return {}
+
+    sol = solver.getSolution().col_value
+    relaxations = {}
+    for key, idx in slack_info.items():
+        cname, bound = key.split(".")
+        relaxations.setdefault(cname, {"min": 0.0, "max": 0.0})
+        if bound == "min":
+            relaxations[cname]["min"] = float(sol[idx])
+        else:
+            relaxations[cname]["max"] = float(sol[idx])
+
+    # Drop zeros for readability
+    relaxations = {
+        c: {k: round(v, 6) for k, v in b.items() if v > 1e-8}
+        for c, b in relaxations.items() if any(v > 1e-8 for v in b.values())
+    }
+    return relaxations
+
 def solve_model(model: LPModel) -> dict:
     var_order = list(model.variables.keys())
     n_vars = len(var_order)
@@ -112,10 +173,13 @@ def solve_model(model: LPModel) -> dict:
 
             if culprit:
                 fix = "raise" if req_min > bounds_for_c["max"] else "lower"
+                coeff = contributions[cname].get(culprit, 0) or 1
+                delta = gap / coeff if coeff else 0
                 ranked.append({
                     "constraint": cname,
                     "gap": round(gap, 6),
-                    "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}"
+                    "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}",
+                    "delta": round(delta, 6)
                 })
 
         if not iis_constraints:
@@ -132,10 +196,13 @@ def solve_model(model: LPModel) -> dict:
                     )[0]
                     if culprit:
                         fix = "raise" if req_min > cb.get("max", 0) else "lower"
+                        coeff = contributions[cname].get(culprit, 0) or 1
+                        delta = gap / coeff if coeff else 0
                         ranked.append({
                             "constraint": cname,
                             "gap": round(gap, 6),
-                            "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}"
+                            "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}",
+                            "delta": round(delta, 6)
                         })
 
         debug = {
@@ -148,7 +215,8 @@ def solve_model(model: LPModel) -> dict:
                 "IIS-based bottlenecks detected" if iis_constraints else
                 "No IIS detected. Heuristic fallback used."
             ) + " Review constraint limits or variable bounds.",
-            "hint_ranked": ranked[:3]
+            "hint_ranked": ranked[:3],
+            "hint_relaxations": _suggest_relaxations(model)
         }
 
         return {

@@ -63,7 +63,10 @@ def test_real_model_iis():
     assert result["infeasible"] is True
     assert "hint_ranked" in result["debug"]
     assert isinstance(result["debug"]["hint_ranked"], list)
+    assert "hint_relaxations" in result["debug"]
+    assert isinstance(result["debug"]["hint_relaxations"], dict)
     print("IIS-Based Hints:", result["debug"]["hint_ranked"])
+    print("Relaxations:", result["debug"]["hint_relaxations"])
     print("Summary:", result["debug"]["hint_summary"])
     print("Full debug:", result["debug"])
 
