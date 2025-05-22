@@ -1,50 +1,30 @@
-from highspy import Highs
+import highspy
 import numpy as np
 
-model = Highs()
+h = highspy.Highs()
+inf = highspy.kHighsInf
 
-# Maximize 1*x1 + 2*x2 → minimize -1*x1 -2*x2
-# Subject to: x1 + x2 ≤ 10
+# Define variables
+h.addVar(0, 4)   # x0: lower bound 0, upper bound 4
+h.addVar(1, inf) # x1: lower bound 1, upper bound infinity
 
-# Variables
-obj = np.array([-1.0, -2.0], dtype=np.float64)
-col_lower = np.array([0.0, 0.0], dtype=np.float64)
-col_upper = np.array([1e20, 1e20], dtype=np.float64)
+# Set objective coefficients
+h.changeColCost(0, 1)  # Coefficient for x0
+h.changeColCost(1, 1)  # Coefficient for x1
 
-# Constraint bounds
-row_lower = np.array([-1e20], dtype=np.float64)
-row_upper = np.array([10.0], dtype=np.float64)
+# Add constraints
+# Constraint: x1 <= 7
+h.addRow(-inf, 7, 1, [1], [1])
 
-# Constraint matrix (CSC: column-based)
-start = np.array([0, 1, 2], dtype=np.int32)     # col start index
-index = np.array([0, 0], dtype=np.int32)        # row indices
-value = np.array([1.0, 1.0], dtype=np.float64)  # matrix values
+# Constraint: 5 <= x0 + 2*x1 <= 15
+h.addRow(5, 15, 2, [0, 1], [1, 2])
 
-# Add all columns with matrix
-model.addCols(
-    num_col=2,
-    costs=obj,
-    lower=col_lower,
-    upper=col_upper,
-    num_new_nz=len(value),
-    starts=start,
-    indices=index,
-    values=value
-)
+# Constraint: 6 <= 3*x0 + 2*x1
+h.addRow(6, inf, 2, [0, 1], [3, 2])
 
-# Add rows with only bounds—NO matrix again!
-model.addRows(
-    num_new_row=1,
-    lower=row_lower,
-    upper=row_upper,
-    num_new_nz=0,
-    starts=np.array([], dtype=np.int32),
-    indices=np.array([], dtype=np.int32),
-    values=np.array([], dtype=np.float64)
-)
+# Solve the model
+h.run()
 
-# Solve
-model.run()
-
-# Show result
-print("Solution:", model.getSolution().col_value)
+# Retrieve and print the solution
+solution = h.getSolution()
+print("Optimal solution:", solution.col_value)
