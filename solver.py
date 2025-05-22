@@ -2,7 +2,6 @@ import numpy as np
 from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
-from utils import analyze_infeasible, analyze_infeasible_detailed
 
 def solve_model(model: LPModel) -> dict:
     var_order = list(model.variables.keys())
@@ -43,17 +42,60 @@ def solve_model(model: LPModel) -> dict:
         } for var in var_order
     }
 
+    # Compute achievable ranges per constraint
+    constraint_bounds = {}
+    for cname in model.constraints.keys():
+        min_val = sum(
+            variable_bounds[v]["min"] * contributions[cname].get(v, 0)
+            for v in variable_bounds
+        )
+        max_val = sum(
+            variable_bounds[v]["max"] * contributions[cname].get(v, 0)
+            for v in variable_bounds
+        )
+        constraint_bounds[cname] = {"min": min_val, "max": max_val}
+
     if str(status) != "HighsModelStatus.kOptimal":
+        solver.computeIIS()
+        iis_rows = solver.getIISRows()
+        iis_cols = solver.getIISCols()
+
+        row_names = list(model.constraints.keys())
+        col_names = list(model.variables.keys())
+        iis_constraints = [row_names[i] for i, row in enumerate(iis_rows) if row == 1]
+        iis_variables = [col_names[i] for i, col in enumerate(iis_cols) if col == 1]
+
+        ranked = []
+        for cname in iis_constraints:
+            bounds_for_c = constraint_bounds[cname]
+            spec = model.constraints[cname].dict()
+            req_min = spec.get("min", -float("inf"))
+            req_max = spec.get("max", float("inf"))
+            gap = max(req_min - bounds_for_c["max"], bounds_for_c["min"] - req_max, 0)
+
+            culprit = max(
+                {v: contributions[cname].get(v, 0) for v in iis_variables}.items(),
+                key=lambda x: x[1],
+                default=(None, 0)
+            )[0]
+
+            if culprit:
+                fix = "raise" if req_min > bounds_for_c["max"] else "lower"
+                ranked.append({
+                    "constraint": cname,
+                    "gap": round(gap, 6),
+                    "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}"
+                })
+
         debug = {
             "reason": "HiGHS returned infeasible model",
             "model_status": str(status),
             "constraints": {k: v.dict() for k, v in model.constraints.items()},
             "variable_bounds": variable_bounds,
-            "contributions": contributions
+            "contributions": contributions,
+            "hint_summary": "Infeasible IIS found; see hint_ranked for tight constraints." if ranked else "No IIS detected.",
+            "hint_ranked": ranked[:3]
         }
-
-        debug["hint_summary"] = analyze_infeasible(debug)
-        debug["hint_ranked"] = analyze_infeasible_detailed(debug)
 
         return {
             "vars": {},
