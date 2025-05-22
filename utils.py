@@ -103,11 +103,10 @@ def analyze_infeasible_detailed(debug: dict, top_k: int = 3) -> list:
 
     if gap is not None or (req_min > max_val or req_max < min_val):
         if gap is None:
-            soft_gap = max(req_min - max_val, min_val - req_max)
+            soft_gap = max(req_min - max_val, min_val - req_max, 0)
             gap = round(soft_gap, 6)
             direction = "low" if req_min > max_val else "high"
 
-        # Find best variable to adjust
         best_var = max(
             coeffs[cname].items(),
             key=lambda kv: kv[1] if kv[1] > 0 else -float("inf"),
@@ -126,5 +125,6 @@ def analyze_infeasible_detailed(debug: dict, top_k: int = 3) -> list:
                 "gap": gap,
                 "fix": fix
             })
+
 
     return sorted(suggestions, key=lambda x: abs(x["gap"]), reverse=True)[:top_k]
