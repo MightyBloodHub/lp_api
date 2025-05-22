@@ -62,12 +62,23 @@ def solve_model(model: LPModel) -> dict:
         if var.startswith("virtual_") and val > 1e-6
     }
 
+    # Try to reconstruct where it's failing
+    contribs = {}
+    for cname in model.constraints.keys():
+        contribs[cname] = {
+            var: model.variables[var].get(cname, 0.0)
+            for var in var_order
+        }
+
     return {
-        "vars": var_result,
-        "cost": round(total_cost, 6),
-        "infeasible": False,
+        "vars": {},
+        "cost": 0.0,
+        "infeasible": True,
         "debug": {
-            "constraint_residuals": constraint_residuals,
-            "virtuals_used": virtuals_used
+            "reason": "HiGHS returned infeasible model",
+            "model_status": str(status),
+            "constraints": model.constraints,
+            "variable_bounds": {var: {"min": model.variables[var].get("min", 0), "max": model.variables[var].get("max", 1)} for var in var_order},
+            "contributions": contribs
         }
     }
