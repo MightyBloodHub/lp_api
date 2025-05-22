@@ -68,7 +68,7 @@ lb[order.index("limestone")] = ub[order.index("limestone")] = 0.047
 # -------------------------------
 # Build sparse matrix safely
 sparse_safe = lil_matrix((len(constraints), n_vars), dtype=np.float64)
-for row_idx, (key, lb, ub) in enumerate(constraints):
+for row_idx, (key, lb_val, ub_val) in enumerate(constraints):
     if key == "total":
         sparse_safe[row_idx, :] = 1.0
     elif key == "me":
