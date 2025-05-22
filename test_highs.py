@@ -2,20 +2,22 @@ from highspy import Highs
 
 model = Highs()
 
-# Add two variables with bounds only
-model.addVar(0, 1e20)  # x1
-model.addVar(0, 1e20)  # x2
+# Define objective coefficients, lower bounds, upper bounds
+obj = [1.0, 2.0]
+lower_bounds = [0.0, 0.0]
+upper_bounds = [1e20, 1e20]
 
-# Set objective coefficients
-model.changeObjectiveCoefficient(0, 1)  # Coeff for x1
-model.changeObjectiveCoefficient(1, 2)  # Coeff for x2
+# Add variables (columns) with bounds and objective
+model.addCols(obj, lower_bounds, upper_bounds)
 
 # Add constraint: x1 + x2 ≤ 10
-model.addRow([0, 1], [1.0, 1.0], -1e20, 10)
+coefficients = [1.0, 1.0]
+column_indices = [0, 1]
+model.addRow(column_indices, coefficients, -1e20, 10)
 
 # Run solver
 model.run()
 
-# Print result
+# Print solution
 solution = model.getSolution().col_value
 print("Solution:", solution)
