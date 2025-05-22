@@ -25,7 +25,7 @@ constraints = [
     ("p",    0.0045, 0.0055),
     ("lys",  0.011, 0.013),
     ("met",  0.005, 0.0065),
-    ("me",   2900, 3100),
+    ("me",   2800, 3100),
     ("total", 1.0, 1.0)
 ]
 
@@ -63,9 +63,9 @@ values = sparse.data.astype(np.float64)
 cost_vector = np.array([ingredients[i]["cost"] for i in order], dtype=np.float64)
 lb_array = np.zeros(n_vars, dtype=np.float64)
 ub_array = np.ones(n_vars, dtype=np.float64)
-ub_array[order.index("bsf")] = 0.04
-lb_array[order.index("premix")] = ub_array[order.index("premix")] = 0.005
-lb_array[order.index("limestone")] = ub_array[order.index("limestone")] = 0.047
+ub_array[order.index("bsf")] = 0.15
+# lb_array[order.index("premix")] = ub_array[order.index("premix")] = 0.005
+# lb_array[order.index("limestone")] = ub_array[order.index("limestone")] = 0.047
 
 # ----------------------------------------
 # Debugging summary
