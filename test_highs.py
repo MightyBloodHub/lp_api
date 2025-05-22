@@ -1,6 +1,5 @@
 from highspy import Highs
 import numpy as np
-from scipy.sparse import lil_matrix
 
 # --------------------------------------
 # Ingredient definitions
@@ -35,21 +34,22 @@ upper_bounds = []
 # --------------------------------------
 # Safe sparse matrix construction
 # --------------------------------------
-print("\n🔍 Building sparse matrix with lil_matrix...")
-sparse_safe = lil_matrix((len(constraints), n_vars), dtype=np.float64)
+from scipy.sparse import dok_matrix
+
+print("\n🔍 Building sparse matrix with dok_matrix (column-safe)...")
+sparse_safe = dok_matrix((len(constraints), n_vars), dtype=np.float64)
 
 for row_idx, (nutrient, lb_val, ub_val) in enumerate(constraints):
-    if nutrient == "total":
-        sparse_safe[row_idx, :] = 1.0
-    elif nutrient == "me":
-        sparse_safe[row_idx, :] = [ingredients[i]["me"] / 1000.0 for i in order]
-        lb_val /= 1000.0
-        ub_val /= 1000.0
-    else:
-        sparse_safe[row_idx, :] = [ingredients[i][nutrient] for i in order]
+    lower_bounds.append(lb_val / 1000.0 if nutrient == "me" else lb_val)
+    upper_bounds.append(ub_val / 1000.0 if nutrient == "me" else ub_val)
 
-    lower_bounds.append(lb_val)
-    upper_bounds.append(ub_val)
+    for col_idx, ing in enumerate(order):
+        if nutrient == "total":
+            sparse_safe[row_idx, col_idx] = 1.0
+        elif nutrient == "me":
+            sparse_safe[row_idx, col_idx] = ingredients[ing]["me"] / 1000.0
+        else:
+            sparse_safe[row_idx, col_idx] = ingredients[ing][nutrient]
 
 sparse = sparse_safe.tocsr()
 sparse.sum_duplicates()
