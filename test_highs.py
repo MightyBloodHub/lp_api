@@ -62,12 +62,23 @@ values = sparse.data.astype(np.float64)
 
 # Build and solve model
 model = Highs()
+assert starts[-1] == len(values), f"Mismatch: starts[-1]={starts[-1]}, len(values)={len(values)}"
+
 print("Sparse matrix shape:", sparse.shape)
 print("Nonzeros:", len(values))
 print("starts:", starts)
 print("index:", index)
 
-model.addCols(n, costs, lb, ub, len(values), starts, index, values)
+model.addCols(
+    n,
+    costs.astype(np.float64),
+    lb.astype(np.float64),
+    ub.astype(np.float64),
+    len(values),
+    starts,
+    index,
+    values
+)
 model.addRows(len(lowers), np.array(lowers), np.array(uppers),
               0, np.array([], dtype=np.int32), np.array([], dtype=np.int32), np.array([], dtype=np.float64))
 model.run()
