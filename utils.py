@@ -22,7 +22,7 @@ def build_sparse_matrix(constraints: Dict, variables: Dict[str, Dict], var_order
             upper_bounds.append(con.max if con.max is not None else 1e20)
 
         for col_idx, var in enumerate(var_order):
-            val = variables[var].get(name, 0.0)
+            val = 1.0 if name == "totalMix" else variables[var].get(name, 0.0)
             mat[row_idx, col_idx] = val
 
     sparse = csr_matrix(mat).tocsc()
