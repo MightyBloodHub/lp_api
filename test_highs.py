@@ -103,8 +103,8 @@ for i in range(n_vars):
 from highspy import HighsLp
 
 lp = HighsLp()
-lp.num_col = n_vars
-lp.num_row = len(lower_bounds)
+lp.num_col_ = n_vars
+lp.num_row_ = len(lower_bounds)
 lp.col_cost = cost_vector
 lp.col_lower = lb_array
 lp.col_upper = ub_array
