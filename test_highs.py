@@ -2,7 +2,7 @@ from highspy import Highs
 import numpy as np
 from scipy.sparse import csr_matrix
 
-# Ingredient data
+# Define ingredients and their properties
 ingredients = {
     "corn":     {"cost": 0.104, "cp": 0.085, "me": 3350, "fat": 0.038, "ca": 0.0002, "p": 0.0025, "lys": 0.0026, "met": 0.0018},
     "soybean":  {"cost": 0.118, "cp": 0.475, "me": 2750, "fat": 0.015, "ca": 0.003,  "p": 0.0065, "lys": 0.029,  "met": 0.0065},
@@ -14,97 +14,68 @@ ingredients = {
 order = ["corn", "soybean", "bsf", "premix", "limestone"]
 n = len(order)
 
-# Constraints for Starter phase
-constraints = {
-    "cp":   (0.22, 0.24),
-    "me":   (2900, 3100),
-    "fat":  (0.045, 0.06),
-    "ca":   (0.009, 0.011),
-    "p":    (0.0045, 0.0055),
-    "lys":  (0.011, 0.013),
-    "met":  (0.005, 0.0065),
-    "total": (1.0, 1.0),
-    "premix_fixed": 0.005,
-    "limestone_fixed": 0.047,
-    "bsf_max": 0.04
-}
+# Define constraints
+constraints = [
+    ("cp", 0.22, 0.24),
+    ("fat", 0.045, 0.06),
+    ("ca", 0.009, 0.011),
+    ("p", 0.0045, 0.0055),
+    ("lys", 0.011, 0.013),
+    ("met", 0.005, 0.0065),
+    ("me", 2900, 3100),  # energy handled separately
+    ("total", 1.0, 1.0)
+]
 
-# Assemble constraint matrix row-wise
 rows = []
-row_lowers = []
-row_uppers = []
+lower_bounds = []
+upper_bounds = []
 
-def add_row(nutrient, lb, ub):
-    rows.append([ingredients[i][nutrient] for i in order])
-    row_lowers.append(lb)
-    row_uppers.append(ub)
+for name, lb, ub in constraints:
+    if name == "total":
+        row = [1.0] * n
+    elif name == "me":
+        row = [ingredients[i]["me"] / 1000.0 for i in order]  # normalize ME
+        lb /= 1000.0
+        ub /= 1000.0
+    else:
+        row = [ingredients[i][name] for i in order]
+    rows.append(row)
+    lower_bounds.append(lb)
+    upper_bounds.append(ub)
 
-# Add nutrient constraints
-add_row("cp", *constraints["cp"])
-add_row("fat", *constraints["fat"])
-add_row("ca", *constraints["ca"])
-add_row("p", *constraints["p"])
-add_row("lys", *constraints["lys"])
-add_row("met", *constraints["met"])
-
-# Energy constraint (scale to per-kg)
-add_row("me", constraints["me"][0]/1000.0, constraints["me"][1]/1000.0)
-
-# Total mix = 1
-rows.append([1.0] * n)
-row_lowers.append(1.0)
-row_uppers.append(1.0)
-
-
-# Convert to sparse column-wise matrix
-dense = np.array(rows, dtype=np.float64)
+# Build sparse matrix (transpose to get column-wise)
+dense = np.array(rows)
 sparse = csr_matrix(dense.T)
-starts = np.array(sparse.indptr, dtype=np.int32)
-index = np.array(sparse.indices, dtype=np.int32)
-values = np.array(sparse.data, dtype=np.float64)
 
-# LP bounds
+starts = sparse.indptr.astype(np.int32)
+index = sparse.indices.astype(np.int32)
+values = sparse.data.astype(np.float64)
+
+# Variable bounds
+lb = np.zeros(n)
+ub = np.ones(n)
+
+# Fixed values
+premix_i = order.index("premix")
+limestone_i = order.index("limestone")
+bsf_i = order.index("bsf")
+
+lb[premix_i] = ub[premix_i] = 0.005
+lb[limestone_i] = ub[limestone_i] = 0.047
+ub[bsf_i] = 0.04
+
 costs = np.array([ingredients[i]["cost"] for i in order])
-lower_bounds = np.zeros(n)
-upper_bounds = np.ones(n)
-upper_bounds[order.index("premix")] = constraints["premix_fixed"]
-lower_bounds[order.index("premix")] = constraints["premix_fixed"]
-upper_bounds[order.index("limestone")] = constraints["limestone_fixed"]
-lower_bounds[order.index("limestone")] = constraints["limestone_fixed"]
-upper_bounds[order.index("bsf")] = constraints["bsf_max"]
 
-# LP model
+# Solve LP
 model = Highs()
-
-# Add cols (ingredients with nutrient matrix)
-model.addCols(
-    n,
-    costs,
-    lower_bounds,
-    upper_bounds,
-    len(values),
-    starts,
-    index,
-    values
-)
-
-# Add rows (constraints only with bounds)
-model.addRows(
-    len(row_lowers),
-    np.array(row_lowers, dtype=np.float64),
-    np.array(row_uppers, dtype=np.float64),
-    0,
-    np.array([], dtype=np.int32),
-    np.array([], dtype=np.int32),
-    np.array([], dtype=np.float64)
-)
-
-# Solve
+model.addCols(n, costs, lb, ub, len(values), starts, index, values)
+model.addRows(len(lower_bounds), np.array(lower_bounds), np.array(upper_bounds), 0,
+              np.array([], dtype=np.int32), np.array([], dtype=np.int32), np.array([], dtype=np.float64))
 model.run()
-sol = model.getSolution()
 
-# Output
+solution = model.getSolution().col_value
+
 print("\nFeed Mix:")
-for i, val in enumerate(sol.col_value):
-    print(f"  {order[i]}: {val:.4f}")
-print(f"\nCost per kg: {np.dot(costs, sol.col_value):.4f}")
+for i, v in enumerate(solution):
+    print(f"  {order[i]}: {v:.4f}")
+print(f"\nCost per kg: {np.dot(costs, solution):.4f}")
