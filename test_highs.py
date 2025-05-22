@@ -1,6 +1,6 @@
 from highspy import Highs
 import numpy as np
-from scipy.sparse import csc_matrix
+from scipy.sparse import lil_matrix
 
 # -------------------------------
 # Feed ingredient definitions
