@@ -1,7 +1,8 @@
 import numpy as np
 from highspy import Highs
-from .models import LPModel, LPSolution
-from .utils import build_sparse_matrix
+from models import LPModel, LPSolution
+from utils import build_sparse_matrix
+
 
 
 def solve_model(model: LPModel) -> LPSolution:

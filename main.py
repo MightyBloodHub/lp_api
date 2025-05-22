@@ -1,6 +1,7 @@
 from fastapi import FastAPI
-from .models import LPRequest, LPSolution
-from .solver import solve_model
+from models import LPRequest, LPSolution
+from solver import solve_model
+
 
 app = FastAPI()
 
