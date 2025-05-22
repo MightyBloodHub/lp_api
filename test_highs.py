@@ -94,6 +94,15 @@ assert sparse.shape == (len(constraints), n_vars), "ERROR: Matrix shape mismatch
 # Build and solve LP model
 # --------------------------------------
 model = Highs()
+print("\n🧪 addCols():", {
+    "n_vars": n_vars,
+    "cost_vector": cost_vector.tolist(),
+    "lb_array": lb_array.tolist(),
+    "ub_array": ub_array.tolist(),
+    "nnz": len(values),
+    "starts[-1]": starts[-1]
+})
+
 model.addCols(n_vars, cost_vector, lb_array, ub_array, len(values), starts, index, values)
 model.addRows(len(lower_bounds),
               np.array(lower_bounds, dtype=np.float64),
@@ -104,7 +113,9 @@ model.addRows(len(lower_bounds),
               np.array([], dtype=np.float64))
 
 print("\n🚀 Solving LP...")
-model.run()
+status = model.run()
+print("🔧 Solver returned status:", status)
+
 status = model.getModelStatus()
 print("✅ Model status:", status)
 
