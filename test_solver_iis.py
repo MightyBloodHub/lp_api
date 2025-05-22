@@ -27,3 +27,4 @@ def test_infeasible_model_generates_iis_hint():
     assert len(result["debug"]["hint_ranked"]) > 0
 
     print("IIS Hints:", result["debug"]["hint_ranked"])
+    print(result)
