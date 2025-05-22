@@ -73,21 +73,32 @@ values = np.array([row[i] for row in rows for i in range(n)], dtype=np.float64)
 model.addCols(n, costs, lower_bounds, upper_bounds, len(values),
               np.array(starts, dtype=np.int32), index, values)
 
-# Add rows (constraints)
+# Convert row bounds
 row_lowers = np.array(row_lowers, dtype=np.float64)
 row_uppers = np.array(row_uppers, dtype=np.float64)
 
-# Must provide dummy sparse format to satisfy API
+# Must add rows first with dummy matrix
 model.addRows(
     len(rows),
     row_lowers,
     row_uppers,
-    0,  # no matrix
+    0,
     np.array([], dtype=np.int32),
     np.array([], dtype=np.int32),
     np.array([], dtype=np.float64)
 )
 
+# Now add columns with actual matrix values
+model.addCols(
+    n,
+    np.array([ingredients[i]["cost"] for i in order]),
+    lower_bounds,
+    upper_bounds,
+    len(values),
+    np.array(starts, dtype=np.int32),
+    index,
+    values
+)
 
 # Solve
 model.run()
