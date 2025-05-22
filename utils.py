@@ -28,3 +28,46 @@ def build_sparse_matrix(constraints: Dict, variables: Dict[str, Dict], var_order
     sparse = csr_matrix(mat).tocsc()
     return sparse, lower_bounds, upper_bounds, constraint_names
 
+def analyze_infeasible(debug: dict) -> str:
+    """Return a plain-language hint about the tightest blocking constraint."""
+    constraints    = debug["constraints"]
+    bounds         = debug["variable_bounds"]
+    coeffs         = debug["contributions"]
+
+    best_gap, culprit, hint = -1e9, None, ""
+    for cname, spec in constraints.items():
+        # Build min/max achievable values given var bounds
+        min_val = sum(bounds[v]["min"] * coeffs[cname].get(v, 0) for v in bounds)
+        max_val = sum(bounds[v]["max"] * coeffs[cname].get(v, 0) for v in bounds)
+
+        # Required interval
+        req_min = spec.get("min", -float("inf"))
+        req_max = spec.get("max",  float("inf"))
+        equal   = spec.get("equal")
+
+        feas = (equal is not None and min_val <= equal <= max_val) or (
+            req_min <= max_val and req_max >= min_val
+        )
+        if feas:
+            continue  # constraint is potentially satisfiable
+
+        # Measure severity: distance from feasible region
+        gap = (
+            req_min - max_val if max_val < req_min else
+            min_val - req_max if min_val > req_max else
+            abs(equal - max_val)  # equal constraint gap
+        )
+        if gap > best_gap:
+            best_gap, culprit = gap, cname
+
+    if culprit:
+        # Pick variable with the largest coefficient for that constraint
+        var = max(coeffs[culprit], key=coeffs[culprit].get)
+        if constraints[culprit].get("min") is not None:
+            hint = f"{culprit} is too low; raise max of '{var}' or lower the min."
+        elif constraints[culprit].get("max") is not None:
+            hint = f"{culprit} is too high; lower max of '{var}' or relax the max."
+        elif constraints[culprit].get('equal') is not None:
+            hint = f"{culprit} can’t hit equality; adjust bounds on '{var}'."
+
+    return hint or "No obvious single-constraint bottleneck detected."

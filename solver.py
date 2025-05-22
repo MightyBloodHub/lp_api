@@ -2,7 +2,7 @@ import numpy as np
 from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
-
+from utils import analyze_infeasible
 
 def solve_model(model: LPModel) -> dict:
     var_order = list(model.variables.keys())
@@ -44,17 +44,21 @@ def solve_model(model: LPModel) -> dict:
     }
 
     if str(status) != "HighsModelStatus.kOptimal":
+        debug = {
+            "reason": "HiGHS returned infeasible model",
+            "model_status": str(status),
+            "constraints": model.constraints,
+            "variable_bounds": variable_bounds,
+            "contributions": contributions
+        }
+
+        debug["hint"] = analyze_infeasible(debug)
+
         return {
             "vars": {},
             "cost": 0.0,
             "infeasible": True,
-            "debug": {
-                "reason": "HiGHS returned infeasible model",
-                "model_status": str(status),
-                "constraints": model.constraints,
-                "variable_bounds": variable_bounds,
-                "contributions": contributions
-            }
+            "debug": debug
         }
 
     sol = solver.getSolution()
