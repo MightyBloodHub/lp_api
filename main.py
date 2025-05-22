@@ -12,4 +12,5 @@ def solve(request: LPRequest):
     for model in request.models:
         solution = solve_model(model)
         results.append(solution)
-    return {"solutions": [r.dict() for r in results]}
+    return {"solutions": results}
+
