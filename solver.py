@@ -47,7 +47,7 @@ def solve_model(model: LPModel) -> dict:
         debug = {
             "reason": "HiGHS returned infeasible model",
             "model_status": str(status),
-            "constraints": model.constraints,
+            "constraints": {k: v.dict() for k, v in model.constraints.items()},
             "variable_bounds": variable_bounds,
             "contributions": contributions
         }
