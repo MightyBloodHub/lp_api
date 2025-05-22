@@ -55,7 +55,7 @@ lb[order.index("limestone")] = ub[order.index("limestone")] = 0.047
 ub[order.index("bsf")] = 0.04
 
 # Convert A to CSC matrix
-sparse = csc_matrix(A.T)  # ← correct orientation: constraints as rows
+sparse = csc_matrix(A)  # ✅ This is correct because rows = constraints already
 starts = sparse.indptr.astype(np.int32)
 index = sparse.indices.astype(np.int32)
 values = sparse.data.astype(np.float64)
