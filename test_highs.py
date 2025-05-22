@@ -92,7 +92,7 @@ assert sparse.shape == (len(constraints), n_vars), "❌ Matrix shape mismatch!"
 # Solve model
 # --------------------------------------
 model = Highs()
-print("\n🧪 Final check before addCols():")
+print("\n🧪 Final check before ...():")
 for i in range(n_vars):
     col_start = starts[i]
     col_end = starts[i + 1]
@@ -100,14 +100,19 @@ for i in range(n_vars):
     print(f"  Row indices:", index[col_start:col_end].tolist())
     print(f"  Values     :", values[col_start:col_end].tolist())
 
-model.addCols(n_vars, cost_vector, lb_array, ub_array, len(values), starts, index, values)
-model.addRows(len(lower_bounds),
-              np.array(lower_bounds, dtype=np.float64),
-              np.array(upper_bounds, dtype=np.float64),
-              0,
-              np.array([], dtype=np.int32),
-              np.array([], dtype=np.int32),
-              np.array([], dtype=np.float64))
+from highspy import HighsLp
+
+lp = HighsLp()
+lp.num_col = n_vars
+lp.num_row = len(lower_bounds)
+lp.col_cost = cost_vector
+lp.col_lower = lb_array
+lp.col_upper = ub_array
+lp.row_lower = np.array(lower_bounds, dtype=np.float64)
+lp.row_upper = np.array(upper_bounds, dtype=np.float64)
+lp.a_matrix = sparse
+
+model.passModel(lp)
 
 print("\n🚀 Solving LP...")
 solver_status = model.run()
