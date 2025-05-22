@@ -51,8 +51,10 @@ add_row("met", *constraints["met"])
 add_row("me", constraints["me"][0]/1000.0, constraints["me"][1]/1000.0)
 
 # Total mix = 1
-add_row(None, 1.0, 1.0)
-rows[-1] = [1.0] * n
+rows.append([1.0] * n)
+row_lowers.append(1.0)
+row_uppers.append(1.0)
+
 
 # Convert to sparse column-wise matrix
 dense = np.array(rows, dtype=np.float64)
