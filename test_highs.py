@@ -76,7 +76,18 @@ model.addCols(n, costs, lower_bounds, upper_bounds, len(values),
 # Add rows (constraints)
 row_lowers = np.array(row_lowers, dtype=np.float64)
 row_uppers = np.array(row_uppers, dtype=np.float64)
-model.addRows(len(rows), row_lowers, row_uppers)
+
+# Must provide dummy sparse format to satisfy API
+model.addRows(
+    len(rows),
+    row_lowers,
+    row_uppers,
+    0,  # no matrix
+    np.array([], dtype=np.int32),
+    np.array([], dtype=np.int32),
+    np.array([], dtype=np.float64)
+)
+
 
 # Solve
 model.run()
