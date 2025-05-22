@@ -1,4 +1,4 @@
-from highs import Highs
+from highspy import Highs  # ✅ correct
 
 model = Highs()
 model.addVar(0, 1e20, 1)
