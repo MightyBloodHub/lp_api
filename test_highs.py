@@ -1,32 +1,27 @@
-from highspy import Highs, HighsLp, HighsMatrix
+from highspy import Highs, HighsLp
 import numpy as np
 
-# Define LP model
+# Define LP
 lp = HighsLp()
 
-# Objective: Maximize 1*x1 + 2*x2 (we'll convert to minimize -1*x1 - 2*x2)
-lp.col_cost = np.array([-1.0, -2.0], dtype=np.float64)  # minimize -obj = maximize obj
+# Objective: maximize 1*x1 + 2*x2 → minimize -1*x1 -2*x2
+lp.col_cost = np.array([-1.0, -2.0], dtype=np.float64)
 lp.col_lower = np.array([0.0, 0.0], dtype=np.float64)
 lp.col_upper = np.array([1e20, 1e20], dtype=np.float64)
 
+# Constraint: x1 + x2 <= 10 → row_lower = -inf, row_upper = 10
 lp.row_lower = np.array([-1e20], dtype=np.float64)
 lp.row_upper = np.array([10.0], dtype=np.float64)
 
-# Constraint matrix: x1 + x2 ≤ 10
-# A matrix in Compressed Sparse Column (CSC) format
-A = HighsMatrix()
-A.num_col = 2
-A.num_row = 1
-A.start = np.array([0, 1, 2], dtype=np.int32)  # col 0 starts at 0, col 1 at 1
-A.index = np.array([0, 0], dtype=np.int32)    # row indices
-A.value = np.array([1.0, 1.0], dtype=np.float64)  # coefficients
-
-lp.a_matrix = A
+# Sparse matrix in CSC format
+lp.a_matrix.start = np.array([0, 1, 2], dtype=np.int32)  # column pointers
+lp.a_matrix.index = np.array([0, 0], dtype=np.int32)     # row indices
+lp.a_matrix.value = np.array([1.0, 1.0], dtype=np.float64)  # values
 
 # Solve
 solver = Highs()
 solver.passModel(lp)
 solver.run()
 
-solution = solver.getSolution().col_value
-print("Solution:", solution)
+# Print result
+print("Solution:", solver.getSolution().col_value)
