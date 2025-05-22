@@ -1,4 +1,7 @@
 import numpy as np
+import os
+import subprocess
+import tempfile
 from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
@@ -23,8 +26,42 @@ def solve_model(model: LPModel) -> dict:
                    np.array([], dtype=np.float64))
     solver.addCols(n_vars, cost_vector, lb, ub, len(values), starts, index, values)
 
-    solver.run()
-    status = solver.getModelStatus()
+    # Save model and run HiGHS using CLI for IIS detection when infeasible
+    with tempfile.TemporaryDirectory() as tmpdir:
+        lp_path = os.path.join(tmpdir, "model.lp")
+        solver.writeModel(lp_path)
+
+        solver.run()
+        status = solver.getModelStatus()
+
+        iis_constraints = []
+        iis_vars = []
+        if str(status) == "HighsModelStatus.kInfeasible":
+            iis_path = os.path.join(tmpdir, "model.iis")
+            try:
+                subprocess.run(
+                    ["highs", "--read", lp_path, "--iis_find", "true", "--write_iis", iis_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+
+                with open(iis_path, "r") as f:
+                    iis_data = f.read()
+
+                for line in iis_data.splitlines():
+                    if line.startswith("row"):
+                        parts = line.split()
+                        if len(parts) > 2 and parts[2].lower() == "in":
+                            iis_constraints.append(parts[1])
+                    elif line.startswith("col"):
+                        parts = line.split()
+                        if len(parts) > 2 and parts[2].lower() == "in":
+                            iis_vars.append(parts[1])
+            except subprocess.CalledProcessError:
+                iis_constraints, iis_vars = [], []
+        else:
+            iis_constraints, iis_vars = [], []
 
     # Always collect contributions (for debug)
     contributions = {}
@@ -56,14 +93,8 @@ def solve_model(model: LPModel) -> dict:
         constraint_bounds[cname] = {"min": min_val, "max": max_val}
 
     if str(status) != "HighsModelStatus.kOptimal":
-        solver.computeIIS()
-        iis_rows = solver.getIISRows()
-        iis_cols = solver.getIISCols()
-
-        row_names = list(model.constraints.keys())
         col_names = list(model.variables.keys())
-        iis_constraints = [row_names[i] for i, row in enumerate(iis_rows) if row == 1]
-        iis_variables = [col_names[i] for i, col in enumerate(iis_cols) if col == 1]
+        iis_variables = [v for v in iis_vars if v in col_names]
 
         ranked = []
         for cname in iis_constraints:
