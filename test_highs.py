@@ -1,23 +1,24 @@
-from highspy import Highs
+from highspy import Highs, HighsLp
 
-model = Highs()
+lp = HighsLp()
 
-# Define objective coefficients, lower bounds, upper bounds
-obj = [1.0, 2.0]
-lower_bounds = [0.0, 0.0]
-upper_bounds = [1e20, 1e20]
+# Define objective function: max 1*x1 + 2*x2
+lp.num_col = 2
+lp.col_cost = [1.0, 2.0]
+lp.col_lower = [0.0, 0.0]
+lp.col_upper = [1e20, 1e20]
 
-# Add variables (columns) with bounds and objective
-model.addCols(obj, lower_bounds, upper_bounds)
+# Define constraint: x1 + x2 <= 10
+lp.num_row = 1
+lp.row_lower = [-1e20]
+lp.row_upper = [10.0]
+lp.a_matrix.start = [0, 1, 2]
+lp.a_matrix.index = [0, 0]
+lp.a_matrix.value = [1.0, 1.0]
 
-# Add constraint: x1 + x2 ≤ 10
-coefficients = [1.0, 1.0]
-column_indices = [0, 1]
-model.addRow(column_indices, coefficients, -1e20, 10)
+solver = Highs()
+solver.passModel(lp)
+solver.run()
 
-# Run solver
-model.run()
-
-# Print solution
-solution = model.getSolution().col_value
-print("Solution:", solution)
+sol = solver.getSolution().col_value
+print("Solution:", sol)
