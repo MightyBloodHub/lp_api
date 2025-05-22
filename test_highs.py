@@ -92,6 +92,14 @@ assert sparse.shape == (len(constraints), n_vars), "❌ Matrix shape mismatch!"
 # Solve model
 # --------------------------------------
 model = Highs()
+print("\n🧪 Final check before addCols():")
+for i in range(n_vars):
+    col_start = starts[i]
+    col_end = starts[i + 1]
+    print(f"Col {i} → starts[{i}]={col_start}, starts[{i+1}]={col_end}")
+    print(f"  Row indices:", index[col_start:col_end].tolist())
+    print(f"  Values     :", values[col_start:col_end].tolist())
+
 model.addCols(n_vars, cost_vector, lb_array, ub_array, len(values), starts, index, values)
 model.addRows(len(lower_bounds),
               np.array(lower_bounds, dtype=np.float64),
