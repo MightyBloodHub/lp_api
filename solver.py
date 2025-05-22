@@ -118,13 +118,36 @@ def solve_model(model: LPModel) -> dict:
                     "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}"
                 })
 
+        if not iis_constraints:
+            for cname, spec in model.constraints.items():
+                cb = constraint_bounds.get(cname, {})
+                req_min = spec.dict().get("min", -float("inf"))
+                req_max = spec.dict().get("max", float("inf"))
+                gap = max(req_min - cb.get("max", 0), cb.get("min", 0) - req_max, 0)
+                if gap > 0:
+                    culprit = max(
+                        contributions[cname].items(),
+                        key=lambda x: x[1],
+                        default=(None, 0)
+                    )[0]
+                    if culprit:
+                        fix = "raise" if req_min > cb.get("max", 0) else "lower"
+                        ranked.append({
+                            "constraint": cname,
+                            "gap": round(gap, 6),
+                            "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}"
+                        })
+
         debug = {
             "reason": "HiGHS returned infeasible model",
             "model_status": str(status),
             "constraints": {k: v.dict() for k, v in model.constraints.items()},
             "variable_bounds": variable_bounds,
             "contributions": contributions,
-            "hint_summary": "Infeasible IIS found; see hint_ranked for tight constraints." if ranked else "No IIS detected.",
+            "hint_summary": (
+                "IIS-based bottlenecks detected" if iis_constraints else
+                "No IIS detected. Heuristic fallback used."
+            ) + " Review constraint limits or variable bounds.",
             "hint_ranked": ranked[:3]
         }
 
