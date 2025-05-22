@@ -101,25 +101,30 @@ def analyze_infeasible_detailed(debug: dict, top_k: int = 3) -> list:
             gap = min_val - req_max
             direction = "high"
 
-        if gap is not None:
-            # Find best variable to adjust
-            best_var = max(
-                coeffs[cname].items(),
-                key=lambda kv: kv[1] if kv[1] > 0 else -float("inf"),
-                default=(None, 0)
-            )[0]
+    if gap is not None or (req_min > max_val or req_max < min_val):
+        if gap is None:
+            soft_gap = max(req_min - max_val, min_val - req_max)
+            gap = round(soft_gap, 6)
+            direction = "low" if req_min > max_val else "high"
 
-            if best_var:
-                if direction == "low":
-                    fix = f"raise {best_var}.max"
-                elif direction == "high":
-                    fix = f"lower {best_var}.min"
-                elif direction == "equal":
-                    fix = f"adjust {best_var}.bounds to allow {equal}"
-                suggestions.append({
-                    "constraint": cname,
-                    "gap": round(gap, 6),
-                    "fix": fix
-                })
+        # Find best variable to adjust
+        best_var = max(
+            coeffs[cname].items(),
+            key=lambda kv: kv[1] if kv[1] > 0 else -float("inf"),
+            default=(None, 0)
+        )[0]
+
+        if best_var:
+            if direction == "low":
+                fix = f"raise {best_var}.max"
+            elif direction == "high":
+                fix = f"lower {best_var}.min"
+            elif direction == "equal":
+                fix = f"adjust {best_var}.bounds to allow {equal}"
+            suggestions.append({
+                "constraint": cname,
+                "gap": gap,
+                "fix": fix
+            })
 
     return sorted(suggestions, key=lambda x: abs(x["gap"]), reverse=True)[:top_k]
