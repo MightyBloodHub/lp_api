@@ -1,5 +1,6 @@
 from highspy import Highs
 import numpy as np
+from scipy.sparse import csr_matrix
 
 # Ingredient data
 ingredients = {
@@ -13,7 +14,7 @@ ingredients = {
 order = ["corn", "soybean", "bsf", "premix", "limestone"]
 n = len(order)
 
-# Constraints for "Starter" phase
+# Constraints for Starter phase
 constraints = {
     "cp":   (0.22, 0.24),
     "me":   (2900, 3100),
@@ -22,39 +23,45 @@ constraints = {
     "p":    (0.0045, 0.0055),
     "lys":  (0.011, 0.013),
     "met":  (0.005, 0.0065),
-    "total": (1.0, 1.0),  # sum to 1
+    "total": (1.0, 1.0),
     "premix_fixed": 0.005,
     "limestone_fixed": 0.047,
     "bsf_max": 0.04
 }
 
-# Matrix assembly
+# Assemble constraint matrix row-wise
 rows = []
 row_lowers = []
 row_uppers = []
 
-def add_row(coeffs, lb, ub):
-    rows.append(coeffs)
+def add_row(nutrient, lb, ub):
+    rows.append([ingredients[i][nutrient] for i in order])
     row_lowers.append(lb)
     row_uppers.append(ub)
 
-# Nutrient constraints
-for key in ["cp", "fat", "ca", "p", "lys", "met"]:
-    vec = [ingredients[i][key] for i in order]
-    lb, ub = constraints[key]
-    add_row(vec, lb, ub)
+# Add nutrient constraints
+add_row("cp", *constraints["cp"])
+add_row("fat", *constraints["fat"])
+add_row("ca", *constraints["ca"])
+add_row("p", *constraints["p"])
+add_row("lys", *constraints["lys"])
+add_row("met", *constraints["met"])
 
-# Energy is handled separately due to units
-me_vec = [ingredients[i]["me"] for i in order]
-me_vec = [v / 1000.0 for v in me_vec]  # scale to per-kg
-add_row(me_vec, constraints["me"][0]/1000.0, constraints["me"][1]/1000.0)
+# Energy constraint (scale to per-kg)
+add_row("me", constraints["me"][0]/1000.0, constraints["me"][1]/1000.0)
 
-# Total mix must equal 1
-add_row([1.0] * n, 1.0, 1.0)
+# Total mix = 1
+add_row(None, 1.0, 1.0)
+rows[-1] = [1.0] * n
 
-# LP setup
-model = Highs()
+# Convert to sparse column-wise matrix
+dense = np.array(rows, dtype=np.float64)
+sparse = csr_matrix(dense.T)
+starts = np.array(sparse.indptr, dtype=np.int32)
+index = np.array(sparse.indices, dtype=np.int32)
+values = np.array(sparse.data, dtype=np.float64)
 
+# LP bounds
 costs = np.array([ingredients[i]["cost"] for i in order])
 lower_bounds = np.zeros(n)
 upper_bounds = np.ones(n)
@@ -64,40 +71,30 @@ upper_bounds[order.index("limestone")] = constraints["limestone_fixed"]
 lower_bounds[order.index("limestone")] = constraints["limestone_fixed"]
 upper_bounds[order.index("bsf")] = constraints["bsf_max"]
 
-# Flatten matrix for sparse input
-starts = [i for i in range(n+1)]
-index = np.arange(len(rows), dtype=np.int32).repeat(n)
-values = np.array([row[i] for row in rows for i in range(n)], dtype=np.float64)
+# LP model
+model = Highs()
 
-# Add cols (ingredients)
-model.addCols(n, costs, lower_bounds, upper_bounds, len(values),
-              np.array(starts, dtype=np.int32), index, values)
+# Add cols (ingredients with nutrient matrix)
+model.addCols(
+    n,
+    costs,
+    lower_bounds,
+    upper_bounds,
+    len(values),
+    starts,
+    index,
+    values
+)
 
-# Convert row bounds
-row_lowers = np.array(row_lowers, dtype=np.float64)
-row_uppers = np.array(row_uppers, dtype=np.float64)
-
-# Must add rows first with dummy matrix
+# Add rows (constraints only with bounds)
 model.addRows(
-    len(rows),
-    row_lowers,
-    row_uppers,
+    len(row_lowers),
+    np.array(row_lowers, dtype=np.float64),
+    np.array(row_uppers, dtype=np.float64),
     0,
     np.array([], dtype=np.int32),
     np.array([], dtype=np.int32),
     np.array([], dtype=np.float64)
-)
-
-# Now add columns with actual matrix values
-model.addCols(
-    n,
-    np.array([ingredients[i]["cost"] for i in order]),
-    lower_bounds,
-    upper_bounds,
-    len(values),
-    np.array(starts, dtype=np.int32),
-    index,
-    values
 )
 
 # Solve
