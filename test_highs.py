@@ -16,7 +16,7 @@ order = list(ingredients.keys())
 n_vars = len(order)
 
 # --------------------------------------
-# Nutrient constraints for Starter phase
+# Constraints
 # --------------------------------------
 constraints = [
     ("cp",   0.22, 0.24),
@@ -33,7 +33,7 @@ lower_bounds = []
 upper_bounds = []
 
 # --------------------------------------
-# Sparse matrix assembly (safe method)
+# Safe sparse matrix construction
 # --------------------------------------
 print("\n🔍 Building sparse matrix with lil_matrix...")
 sparse_safe = lil_matrix((len(constraints), n_vars), dtype=np.float64)
@@ -51,58 +51,44 @@ for row_idx, (nutrient, lb_val, ub_val) in enumerate(constraints):
     lower_bounds.append(lb_val)
     upper_bounds.append(ub_val)
 
-# Convert to CSC
 sparse = sparse_safe.tocsc()
 starts = sparse.indptr.astype(np.int32)
 index = sparse.indices.astype(np.int32)
 values = sparse.data.astype(np.float64)
 
 # --------------------------------------
-# Variable bounds & cost vector
+# Bounds and cost vector
 # --------------------------------------
 lb_array = np.zeros(n_vars, dtype=np.float64)
 ub_array = np.ones(n_vars, dtype=np.float64)
-
-# Apply fixed and max constraints
 ub_array[order.index("bsf")] = 0.04
-premix_idx = order.index("premix")
-limestone_idx = order.index("limestone")
-lb_array[premix_idx] = ub_array[premix_idx] = 0.005
-lb_array[limestone_idx] = ub_array[limestone_idx] = 0.047
-
+lb_array[order.index("premix")] = ub_array[order.index("premix")] = 0.005
+lb_array[order.index("limestone")] = ub_array[order.index("limestone")] = 0.047
 cost_vector = np.array([ingredients[i]["cost"] for i in order], dtype=np.float64)
 
 # --------------------------------------
-# Deep debugging before solve
+# Deep validation
 # --------------------------------------
 print("\n📊 Sparse Matrix Summary")
 print("-" * 40)
 print("Shape:", sparse.shape)
 print("Nonzeros:", len(values))
-print("Starts (column ptrs):", starts.tolist())
-print("Index (row indices):", index.tolist())
+print("Starts:", starts.tolist())
+print("Index:", index.tolist())
 print("Values:", values.tolist())
-print("\n🧮 Cost vector:", cost_vector.tolist())
-print("📌 Lower bounds:", lb_array.tolist())
-print("📌 Upper bounds:", ub_array.tolist())
-print("📐 Constraint bounds:", list(zip(lower_bounds, upper_bounds)))
+print("Cost vector:", cost_vector.tolist())
+print("Lower bounds:", lb_array.tolist())
+print("Upper bounds:", ub_array.tolist())
+print("Constraint bounds:", list(zip(lower_bounds, upper_bounds)))
 
-assert starts[-1] == len(values), "ERROR: CSC index mismatch!"
-assert sparse.shape == (len(constraints), n_vars), "ERROR: Matrix shape mismatch!"
+assert starts[-1] == len(values), "❌ CSC index mismatch!"
+assert all(starts[i] <= starts[i+1] for i in range(len(starts)-1)), "❌ starts array not monotonic!"
+assert sparse.shape == (len(constraints), n_vars), "❌ Matrix shape mismatch!"
 
 # --------------------------------------
-# Build and solve LP model
+# Solve model
 # --------------------------------------
 model = Highs()
-print("\n🧪 addCols():", {
-    "n_vars": n_vars,
-    "cost_vector": cost_vector.tolist(),
-    "lb_array": lb_array.tolist(),
-    "ub_array": ub_array.tolist(),
-    "nnz": len(values),
-    "starts[-1]": starts[-1]
-})
-
 model.addCols(n_vars, cost_vector, lb_array, ub_array, len(values), starts, index, values)
 model.addRows(len(lower_bounds),
               np.array(lower_bounds, dtype=np.float64),
@@ -113,20 +99,20 @@ model.addRows(len(lower_bounds),
               np.array([], dtype=np.float64))
 
 print("\n🚀 Solving LP...")
-status = model.run()
-print("🔧 Solver returned status:", status)
+solver_status = model.run()
+model_status = model.getModelStatus()
 
-status = model.getModelStatus()
-print("✅ Model status:", status)
+print("🔧 Solver status:", solver_status)
+print("✅ Model status:", model_status)
 
 # --------------------------------------
-# Output results
+# Output
 # --------------------------------------
 sol = model.getSolution()
 x = sol.col_value
 
 if len(x) == 0:
-    print("❌ No solution found. LP was likely infeasible.")
+    print("❌ No solution found. LP was likely infeasible or matrix rejected.")
 else:
     print("\n🥣 Feed Mix Solution:")
     for i, val in enumerate(x):
