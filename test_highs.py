@@ -66,11 +66,20 @@ lb[order.index("limestone")] = ub[order.index("limestone")] = 0.047
 # -------------------------------
 # Convert dense A to valid CSC
 # -------------------------------
-sparse = csc_matrix(A_dense)
+# Build sparse matrix safely
+sparse_safe = lil_matrix((len(constraints), n_vars), dtype=np.float64)
+for row_idx, (key, lb, ub) in enumerate(constraints):
+    if key == "total":
+        sparse_safe[row_idx, :] = 1.0
+    elif key == "me":
+        sparse_safe[row_idx, :] = [ingredients[i]["me"] / 1000.0 for i in order]
+    else:
+        sparse_safe[row_idx, :] = [ingredients[i][key] for i in order]
+
+sparse = sparse_safe.tocsc()
 starts = sparse.indptr.astype(np.int32)
 index = sparse.indices.astype(np.int32)
 values = sparse.data.astype(np.float64)
-
 # -------------------------------
 # Debugging output
 # -------------------------------
