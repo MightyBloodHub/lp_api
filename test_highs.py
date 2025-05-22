@@ -103,16 +103,23 @@ for i in range(n_vars):
 from highspy import HighsLp
 
 lp = HighsLp()
-lp.num_col_ = n_vars
-lp.num_row_ = len(lower_bounds)
-lp.col_cost = cost_vector
-lp.col_lower = lb_array
-lp.col_upper = ub_array
-lp.row_lower = np.array(lower_bounds, dtype=np.float64)
-lp.row_upper = np.array(upper_bounds, dtype=np.float64)
+lp.num_col = n_vars
+lp.num_row = len(lower_bounds)
+lp.col_cost = cost_vector.tolist()
+lp.col_lower = lb_array.tolist()
+lp.col_upper = ub_array.tolist()
+lp.row_lower = [float(b) for b in lower_bounds]
+lp.row_upper = [float(b) for b in upper_bounds]
+
+# Assign matrix
 lp.a_matrix = sparse
 
+
+model = Highs()
 model.passModel(lp)
+model.run()
+print("✅ Model status:", model.getModelStatus())
+print("📉 Objective value:", model.getObjectiveValue())
 
 print("\n🚀 Solving LP...")
 solver_status = model.run()
