@@ -62,6 +62,11 @@ values = sparse.data.astype(np.float64)
 
 # Build and solve model
 model = Highs()
+print("Sparse matrix shape:", sparse.shape)
+print("Nonzeros:", len(values))
+print("starts:", starts)
+print("index:", index)
+
 model.addCols(n, costs, lb, ub, len(values), starts, index, values)
 model.addRows(len(lowers), np.array(lowers), np.array(uppers),
               0, np.array([], dtype=np.int32), np.array([], dtype=np.int32), np.array([], dtype=np.float64))
