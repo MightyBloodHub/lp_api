@@ -13,6 +13,7 @@ class LPModel(BaseModel):
     opType: Literal["min", "max"]
     constraints: Dict[str, ConstraintRange]
     variables: Dict[str, Dict[str, float]]
+    allow_relaxation: bool = False
 
 
 class LPRequest(BaseModel):

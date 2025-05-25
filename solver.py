@@ -7,6 +7,19 @@ from models import LPModel
 from utils import build_sparse_matrix
 
 
+def apply_relaxations(model, suggestions):
+    import copy
+    relaxed = copy.deepcopy(model)
+    for cname, adjustments in suggestions.get("hint_relaxations", {}).items():
+        constraint = relaxed.constraints.get(cname, {})
+        if "min" in constraint and "min" in adjustments:
+            constraint["min"] -= adjustments["min"]
+        if "max" in constraint and "max" in adjustments:
+            constraint["max"] += adjustments["max"]
+        relaxed.constraints[cname] = constraint
+    return relaxed
+
+
 def _suggest_relaxations(model: LPModel):
     """Return minimal constraint relaxations using slack variables."""
     var_order = list(model.variables.keys())
@@ -67,7 +80,14 @@ def _suggest_relaxations(model: LPModel):
     }
     return relaxations
 
-def solve_model(model: LPModel) -> dict:
+def solve_model(model: LPModel, iteration_depth: int = 0) -> dict:
+    if iteration_depth > 1:
+        return {
+            "vars": {},
+            "cost": 0.0,
+            "infeasible": True,
+            "debug": {"reason": "Failed after relaxation attempt"},
+        }
     var_order = list(model.variables.keys())
     n_vars = len(var_order)
 
@@ -205,6 +225,7 @@ def solve_model(model: LPModel) -> dict:
                             "delta": round(delta, 6)
                         })
 
+        relax_suggestions = _suggest_relaxations(model)
         debug = {
             "reason": "HiGHS returned infeasible model",
             "model_status": str(status),
@@ -216,14 +237,23 @@ def solve_model(model: LPModel) -> dict:
                 "No IIS detected. Heuristic fallback used."
             ) + " Review constraint limits or variable bounds.",
             "hint_ranked": ranked[:3],
-            "hint_relaxations": _suggest_relaxations(model)
+            "hint_relaxations": relax_suggestions,
         }
+
+        if (
+            str(status) == "HighsModelStatus.kInfeasible"
+            and model.allow_relaxation
+            and iteration_depth == 0
+            and relax_suggestions
+        ):
+            relaxed_model = apply_relaxations(model, {"hint_relaxations": relax_suggestions})
+            return solve_model(relaxed_model, iteration_depth=iteration_depth + 1)
 
         return {
             "vars": {},
             "cost": 0.0,
             "infeasible": True,
-            "debug": debug
+            "debug": debug,
         }
 
 
