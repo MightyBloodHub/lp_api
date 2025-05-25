@@ -19,10 +19,12 @@ def apply_relaxations(model: LPModel, suggestions: dict) -> LPModel:
         if not constraint:
             continue
         if "min" in adjustments and constraint.min is not None:
-            constraint.min -= adjustments["min"]
+            new_min = constraint.min - adjustments["min"]
+            constraint.min = max(0.0, new_min)
         if "max" in adjustments and constraint.max is not None:
             constraint.max += adjustments["max"]
         relaxed.constraints[cname] = constraint
+        print(f"Relaxed {cname}: min -> {constraint.min}, max -> {constraint.max}")
 
     return relaxed
 
