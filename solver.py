@@ -2,9 +2,12 @@ import numpy as np
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 from highspy import Highs
 from models import LPModel
 from utils import build_sparse_matrix
+
+MAX_RETRIES = 6
 
 
 def apply_relaxations(model: LPModel, suggestions: dict) -> LPModel:
@@ -93,17 +96,57 @@ def _suggest_relaxations(model: LPModel):
     }
     return relaxations
 
+
+def _minimal_relax(lp_path: str) -> dict[str, dict[str, float]]:
+    """Return relaxations from HiGHS --min_relaxation."""
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "relaxed.lp"
+        subprocess.run(
+            [
+                "highs",
+                "--read",
+                lp_path,
+                "--min_relaxation",
+                "true",
+                "--write_model_after_pre",
+                out,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        relaxations: dict[str, dict[str, float]] = {}
+        try:
+            with open(out, "r") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith("RowLower"):
+                        name, val = line.split()[:2]
+                        cname = name[len("RowLower") :]
+                        relaxations.setdefault(cname, {})["min"] = float(val)
+                    elif line.startswith("RowUpper"):
+                        name, val = line.split()[:2]
+                        cname = name[len("RowUpper") :]
+                        relaxations.setdefault(cname, {})["max"] = float(val)
+        except OSError:
+            pass
+
+        return relaxations
+
 def solve_model(
     model: LPModel,
     iteration_depth: int = 0,
     relaxations_applied: dict | None = None,
 ) -> dict:
-    if iteration_depth > 1:
+    if iteration_depth > MAX_RETRIES:
         return {
             "vars": {},
             "cost": 0.0,
             "infeasible": True,
-            "debug": {"reason": "Failed after relaxation attempt"},
+            "debug": {
+                "reason": f"Still infeasible after {MAX_RETRIES} relax passes",
+            },
         }
     var_order = list(model.variables.keys())
     n_vars = len(var_order)
@@ -243,6 +286,12 @@ def solve_model(
                         })
 
         relax_suggestions = _suggest_relaxations(model)
+        if relax_suggestions == (relaxations_applied or {}):
+            # identical to last round – scale up to break the dead-end
+            relax_suggestions = {
+                row: {b: v * 5 for b, v in bounds.items()}
+                for row, bounds in relax_suggestions.items()
+            }
         debug = {
             "reason": "HiGHS returned infeasible model",
             "model_status": str(status),
@@ -260,9 +309,23 @@ def solve_model(
         if (
             str(status) == "HighsModelStatus.kInfeasible"
             and model.allow_relaxation
-            and iteration_depth == 0
             and relax_suggestions
         ):
+            if iteration_depth >= MAX_RETRIES:
+                return {
+                    "vars": {},
+                    "cost": 0.0,
+                    "infeasible": True,
+                    "debug": debug,
+                }
+
+            if iteration_depth == MAX_RETRIES - 1:
+                extra = _minimal_relax(lp_path)
+                for row, bounds in extra.items():
+                    dest = relax_suggestions.setdefault(row, {})
+                    for b, v in bounds.items():
+                        dest[b] = max(dest.get(b, 0.0), v)
+
             print("Fallback activated: re-solving with relaxed constraints.")
             relaxed_model = apply_relaxations(model, {"hint_relaxations": relax_suggestions})
             return solve_model(
