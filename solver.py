@@ -7,16 +7,25 @@ from models import LPModel
 from utils import build_sparse_matrix
 
 
-def apply_relaxations(model, suggestions):
+def apply_relaxations(model: LPModel, suggestions: dict) -> LPModel:
+    """Return a new model with constraint bounds relaxed."""
+
     import copy
+
     relaxed = copy.deepcopy(model)
+
     for cname, adjustments in suggestions.get("hint_relaxations", {}).items():
-        constraint = relaxed.constraints.get(cname, {})
-        if "min" in constraint and "min" in adjustments:
-            constraint["min"] -= adjustments["min"]
-        if "max" in constraint and "max" in adjustments:
-            constraint["max"] += adjustments["max"]
+        constraint = relaxed.constraints.get(cname)
+        if not constraint:
+            continue
+        if "min" in adjustments and constraint.min is not None:
+            new_min = constraint.min - adjustments["min"]
+            constraint.min = max(0.0, new_min)
+        if "max" in adjustments and constraint.max is not None:
+            constraint.max += adjustments["max"]
         relaxed.constraints[cname] = constraint
+        print(f"Relaxed {cname}: min -> {constraint.min}, max -> {constraint.max}")
+
     return relaxed
 
 
