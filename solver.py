@@ -7,16 +7,28 @@ from models import LPModel
 from utils import build_sparse_matrix
 
 
-def apply_relaxations(model, suggestions):
+def apply_relaxations(model: LPModel, suggestions: dict) -> LPModel:
+    """Return a new model with constraint bounds relaxed."""
+
     import copy
+
     relaxed = copy.deepcopy(model)
+
     for cname, adjustments in suggestions.get("hint_relaxations", {}).items():
-        constraint = relaxed.constraints.get(cname, {})
-        if "min" in constraint and "min" in adjustments:
-            constraint["min"] -= adjustments["min"]
-        if "max" in constraint and "max" in adjustments:
-            constraint["max"] += adjustments["max"]
+        constraint = relaxed.constraints.get(cname)
+        if not constraint:
+            continue
+        old_min = constraint.min
+        old_max = constraint.max
+        if "min" in adjustments and constraint.min is not None:
+            constraint.min = max(0.0, constraint.min - adjustments["min"])
+        if "max" in adjustments and constraint.max is not None:
+            constraint.max += adjustments["max"]
         relaxed.constraints[cname] = constraint
+        print(
+            f"Relaxed {cname}: min {old_min} -> {constraint.min}, max {old_max} -> {constraint.max}"
+        )
+
     return relaxed
 
 
@@ -80,7 +92,11 @@ def _suggest_relaxations(model: LPModel):
     }
     return relaxations
 
-def solve_model(model: LPModel, iteration_depth: int = 0) -> dict:
+def solve_model(
+    model: LPModel,
+    iteration_depth: int = 0,
+    relaxations_applied: dict | None = None,
+) -> dict:
     if iteration_depth > 1:
         return {
             "vars": {},
@@ -246,8 +262,13 @@ def solve_model(model: LPModel, iteration_depth: int = 0) -> dict:
             and iteration_depth == 0
             and relax_suggestions
         ):
+            print("Fallback activated: re-solving with relaxed constraints.")
             relaxed_model = apply_relaxations(model, {"hint_relaxations": relax_suggestions})
-            return solve_model(relaxed_model, iteration_depth=iteration_depth + 1)
+            return solve_model(
+                relaxed_model,
+                iteration_depth=iteration_depth + 1,
+                relaxations_applied=relax_suggestions,
+            )
 
         return {
             "vars": {},
@@ -279,12 +300,22 @@ def solve_model(model: LPModel, iteration_depth: int = 0) -> dict:
         if var.startswith("virtual_") and val > 1e-6
     }
 
-    return {
+    result = {
         "vars": var_result,
         "cost": round(total_cost, 6),
         "infeasible": False,
         "debug": {
             "constraint_residuals": constraint_residuals,
-            "virtuals_used": virtuals_used
-        }
+            "virtuals_used": virtuals_used,
+        },
     }
+    if relaxations_applied:
+        result["debug"]["relaxations_applied"] = {
+            cname: {
+                "min": getattr(model.constraints[cname], "min", None),
+                "max": getattr(model.constraints[cname], "max", None),
+            }
+            for cname in relaxations_applied
+            if cname in model.constraints
+        }
+    return result
