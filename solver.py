@@ -29,6 +29,7 @@ def apply_relaxations(model: LPModel, suggestions: dict) -> LPModel:
             f"Relaxed {cname}: min {old_min} -> {constraint.min}, max {old_max} -> {constraint.max}"
         )
 
+
     return relaxed
 
 
