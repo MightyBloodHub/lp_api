@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from typing import List
 from models import LPRequest, LPSolution
 from solver import solve_model
 
