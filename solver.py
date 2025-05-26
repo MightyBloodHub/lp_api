@@ -101,20 +101,24 @@ def _minimal_relax(lp_path: str) -> dict[str, dict[str, float]]:
     """Return relaxations from HiGHS --min_relaxation."""
     with tempfile.TemporaryDirectory() as td:
         out = Path(td) / "relaxed.lp"
-        subprocess.run(
-            [
-                "highs",
-                "--read",
-                lp_path,
-                "--min_relaxation",
-                "true",
-                "--write_model_after_pre",
-                out,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [
+                    "highs",
+                    "--read",
+                    lp_path,
+                    "--min_relaxation",
+                    "true",
+                    "--write_model_after_pre",
+                    out,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            print(f"Highs min_relaxation failed: {exc}")
+            return {}
 
         relaxations: dict[str, dict[str, float]] = {}
         try:
