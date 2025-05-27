@@ -271,11 +271,7 @@ def solve_model(
                 cb = constraint_bounds.get(cname, {})
                 req_min = spec.dict().get("min", -float("inf"))
                 req_max = spec.dict().get("max", float("inf"))
-                cb_min = cb.get("min", float("-inf"))
-                cb_max = cb.get("max", float("inf"))
-
-                gap = max(req_min - cb_max, cb_min - req_max, 0)
-
+                gap = max(req_min - cb.get("max", 0), cb.get("min", 0) - req_max, 0)
                 if gap > 0:
                     culprit = max(
                         contributions[cname].items(),
@@ -283,7 +279,7 @@ def solve_model(
                         default=(None, 0)
                     )[0]
                     if culprit:
-                        fix = "raise" if req_min - cb_max > cb_min - req_max else "lower"
+                        fix = "raise" if req_min > cb.get("max", 0) else "lower"
                         coeff = contributions[cname].get(culprit, 0) or 1
                         delta = gap / coeff if coeff else 0
                         ranked.append({
@@ -292,7 +288,6 @@ def solve_model(
                             "fix": f"{fix} {culprit}.{'max' if fix == 'raise' else 'min'}",
                             "delta": round(delta, 6)
                         })
-
 
         relax_suggestions = _suggest_relaxations(model)
         if relax_suggestions == (relaxations_applied or {}):
